@@ -44,7 +44,18 @@
   <h2>Extrator e Gerador de Entidades Sequelize</h2>
 
   <label for="codigoTS">Código TypeScript da Entidade:</label>
-  <textarea id="codigoTS" placeholder="Cole aqui o código TypeScript da entidade"></textarea>
+  <textarea id="codigoTS" placeholder="Cole aqui sua entidade no formato: 
+  
+export class {NOME DA ENTIDADE} extends CoreEntity {
+    atributo1: string;
+    atributo2: number;
+    atributo3: boolean;
+    atributo4: QualquerTipo;
+    .
+    .
+    .
+}
+"></textarea>
 
   <button onclick="extrairAtributos()">Extrair Atributos</button>
 
