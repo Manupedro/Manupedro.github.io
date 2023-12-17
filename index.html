@@ -73,58 +73,77 @@
 
   <script>
     function extrairAtributos() {
-      var codigoTS = document.getElementById('codigoTS').value;
+      
+  var codigoTS = document.getElementById('codigoTS').value;
 
-      // Encontrar a parte entre 'class' e 'extends'
-      var match = codigoTS.match(/class\s+(\w+)\s+extends/);
+  // Encontrar a parte entre 'class' e 'extends'
+  var match = codigoTS.match(/class\s+(\w+)\s+extends/);
 
-      if (match && match[1]) {
-        document.getElementById('nomeEntidade').value = match[1];
-      } else {
-        console.error('Não foi possível extrair o nome da entidade do código TypeScript.');
-      }
+  if (match && match[1]) {
+    document.getElementById('nomeEntidade').value = match[1];
+  } else {
+    console.error('Não foi possível extrair o nome da entidade do código TypeScript.');
+  }
 
-      // Encontrar a parte dentro da classe entre '{' e '}'
-      var atributosTexto = codigoTS.match(/class[\s\S]*?\{([\s\S]*?)\}/);
+  // Encontrar a parte dentro da classe entre '{' e '}'
+  var atributosTexto = codigoTS.match(/class[\s\S]*?\{([\s\S]*?)\}/);
 
-      if (atributosTexto && atributosTexto[1]) {
-        var atributos = atributosTexto[1].trim().split(';').map(item => item.trim()).filter(Boolean);
-        var atributosFormatados = atributos.map(atributo => `${atributo};`);
+  if (atributosTexto && atributosTexto[1]) {
+    var atributos = atributosTexto[1].trim().split(';').map(item => item.trim()).filter(Boolean);
+    var atributosFormatados = atributos.map(atributo => {
+      var [nome, tipo] = atributo.split(':').map(item => item.trim());
 
-        document.getElementById('atributosExtratos').textContent = atributosFormatados.join('\n');
-      } else {
-        console.error('Não foi possível extrair os atributos do código TypeScript.');
-      }
-    }
+      // Verifica se o tipo é um tipo padrão permitido
+      var tipoPermitido = ['string', 'number', 'boolean'].includes(tipo);
+      var corDestaque = tipoPermitido ? 'black' : 'red';
 
+      return `<span style="color: ${corDestaque};">${atributo};</span>`;
+    });
+
+    document.getElementById('atributosExtratos').innerHTML = atributosFormatados.join('\n');
+  } else {
+    console.error('Não foi possível extrair os atributos do código TypeScript.');
+  }
+  organizarAtributos();
+}
+    var counter = 0;
     function gerarCodigo() {
-      var nomeEntidade = document.getElementById('nomeEntidade').value;
-      var atributosTexto = document.getElementById('atributosExtratos').textContent;
-
-      var codigoGerado = `
+      organizarAtributos();
+  var nomeEntidade = document.getElementById('nomeEntidade').value;
+  var atributosTexto = document.getElementById('atributosExtratos').textContent;
+  
+  var implementationWarn = '//Verifique a implementação!'
+  var codigoGerado = `
 @Table
 class ${nomeEntidade} extends Model<InferAttributes<${nomeEntidade}>, InferCreationAttributes<${nomeEntidade}>>{
     declare id: Number;`;
 
-      var atributos = atributosTexto.split(';').map(item => item.trim()).filter(Boolean);
+  var atributos = atributosTexto.split(';').map(item => item.trim()).filter(Boolean);
 
-      atributos.forEach(atributo => {
-        var [nome, tipo] = atributo.split(':').map(item => item.trim());
+  atributos.forEach(atributo => {
+    var [nome, tipo] = atributo.split(':').map(item => item.trim());
 
-        // Verifica se o tipo é um tipo padrão permitido
-        if (['string', 'number', 'boolean'].includes(tipo)) {
-          var allowNull = tipo.endsWith('?') ? 'true' : 'false';
-
-          codigoGerado += `
-    @Column
-    declare ${nome}: ${tipo};`;
-        } else {
-          console.error(`Tipo ${tipo} não permitido para o atributo ${nome}. Apenas string, number e boolean são permitidos.`);
-        }
-      });
+    // Verifica se o tipo é um tipo padrão permitido
+    if (['string', 'number', 'boolean'].includes(tipo)) {
+      var allowNull = tipo.endsWith('?') ? 'true' : 'false';
 
       codigoGerado += `
-    
+    @Column
+    declare ${nome}: ${tipo};`;
+    } else {
+      if(counter != 0){
+        implementationWarn = ''
+      }
+      counter++;
+
+      codigoGerado += ` 
+    ${implementationWarn}
+    @Column
+    declare ${nome}${tipo}Id: number;`;
+    }
+  });
+
+  codigoGerado += `
     // Padrões
     @ForeignKey(() => User)
     @Column
@@ -142,20 +161,20 @@ class ${nomeEntidade} extends Model<InferAttributes<${nomeEntidade}>, InferCreat
 
 export default ${nomeEntidade}`;
 
-      // Exibir o código gerado no textarea
-      document.getElementById('codigoGerado').value = codigoGerado;
-    }
+  // Exibir o código gerado no textarea
+  document.getElementById('codigoGerado').value = codigoGerado;
+}
 
-    function gerarMigration() {
-      var nomeEntidade = document.getElementById('nomeEntidade').value;
-      var atributosTexto = document.getElementById('atributosExtratos').textContent;
+function gerarMigration() {
+  var nomeEntidade = document.getElementById('nomeEntidade').value;
+  var atributosTexto = document.getElementById('atributosExtratos').textContent;
 
-      var codigoMigrationGerado = `
+  var codigoMigrationGerado = `
 'use strict';
 
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
-  async up (queryInterface, Sequelize) {
+  async up(queryInterface, Sequelize) {
     await queryInterface.createTable('${nomeEntidade}', {
       id: {
         type: Sequelize.INTEGER,
@@ -163,18 +182,30 @@ module.exports = {
         primaryKey: true,
       },`;
 
-      atributosTexto.split(';').forEach(atributo => {
-        var [nome, tipo, podeSerNulo] = atributo.split(':').map(item => item.trim());
+    atributosTexto.split(';').forEach(atributo => {
+      var [nome, tipo, podeSerNulo] = atributo.split(':').map(item => item.trim());
 
+      // Adaptação para tipos não padrões
+      var tipoSequelize = 'INTEGER'; // Defina o tipo padrão para tipos não padrões
+
+      // Adaptação para 'type: Sequelize'
+      if (tipo.toLowerCase() === 'sequelize') {
         codigoMigrationGerado += `
-      ${nome}: {
-        type: Sequelize.${tipo.toUpperCase()},
+      ${nome}Id: {
+        type: Sequelize.${tipoSequelize},
         allowNull: ${podeSerNulo === 'true' ? 'true' : 'false'},
       },`;
-      });
+      } else {
+        codigoMigrationGerado += `
+      ${nome}: {
+        type: Sequelize.${tipoSequelize},
+        allowNull: ${podeSerNulo === 'true' ? 'true' : 'false'},
+      },`;
+      }
+    });
 
-      // Adicionar o restante do template
-      codigoMigrationGerado += `
+    // Adicionar o restante do template
+    codigoMigrationGerado += `
       createdBy: {
         allowNull: false,
         type: Sequelize.UUID,
@@ -212,23 +243,24 @@ module.exports = {
     });
   },
 
-  async down (queryInterface, Sequelize) {
+  async down(queryInterface, Sequelize) {
     await queryInterface.dropTable('${nomeEntidade}');
   }
 };`;
 
-      // Exibir o código gerado no textarea
-      document.getElementById('codigoMigrationGerado').value = codigoMigrationGerado;
-    }
-    function gerarMigracao() {
-    var nomeEntidade = document.getElementById('nomeEntidade').value;
-    var atributosTexto = document.getElementById('atributosExtratos').textContent;
+    // Exibir o código gerado no textarea
+    document.getElementById('codigoMigrationGerado').value = codigoMigrationGerado;
+}
 
-    var migracaoGerada = `'use strict';
+function gerarMigracao() {
+  var nomeEntidade = document.getElementById('nomeEntidade').value;
+  var atributosTexto = document.getElementById('atributosExtratos').textContent;
+
+  var migracaoGerada = `'use strict';
 
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
-  async up (queryInterface, Sequelize) {
+  async up(queryInterface, Sequelize) {
     await queryInterface.createTable('${nomeEntidade}', {
       id: {
         type: Sequelize.INTEGER,
@@ -273,14 +305,14 @@ module.exports = {
     });
   },
 
-  async down (queryInterface, Sequelize) {
+  async down(queryInterface, Sequelize) {
     await queryInterface.dropTable('${nomeEntidade}');
   }
 };`;
 
-    // Exibir a migração gerada no textarea
-    document.getElementById('migracaoGerada').value = migracaoGerada;
-  }
+  // Exibir a migração gerada no textarea
+  document.getElementById('migracaoGerada').value = migracaoGerada;
+}
 
   function gerarAtributosMigracao(atributosTexto) {
     var atributos = atributosTexto.split(';').map(item => item.trim()).filter(Boolean);
@@ -299,13 +331,67 @@ module.exports = {
         type: Sequelize.${tipo.replace(/\?$/, '')},
         allowNull: ${allowNull},
       },`;
-      } else {
-        console.error(`Tipo ${tipo} não permitido para o atributo ${nome}. Apenas string, number e boolean são permitidos.`);
+      }else {
+        
+        // Verifica se o tipo termina com '?' para determinar allowNull
+        var allowNull = tipo.endsWith('?') ? 'true' : 'false';
+
+        codigoAtributos += `
+      ${nome}: {
+        type: Sequelize.,
+        allowNull: ${allowNull},
+        references: {
+          model: '',
+          key: '',
+          as: '',
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE',
+      },
+      `;
+
+        /*console.error(`Tipo ${tipo} não permitido para o atributo ${nome}. Apenas string, number e boolean são permitidos.`);*/
       }
     });
 
     return codigoAtributos;
   }
+  
+  function organizarAtributos() {
+  var atributosTexto = document.getElementById('atributosExtratos').textContent;
+
+  var atributos = atributosTexto.split(';').map(item => item.trim()).filter(Boolean);
+
+  // Separe os atributos em dois arrays: padrão e não padrão
+  var atributosPadrao = [];
+  var atributosNaoPadrao = [];
+
+  atributos.forEach(atributo => {
+    var [nome, tipo] = atributo.split(':').map(item => item.trim());
+
+    // Verifica se o tipo é um tipo padrão permitido
+    if (['string', 'number', 'boolean'].includes(tipo)) {
+      atributosPadrao.push(atributo);
+    } else {
+      atributosNaoPadrao.push(atributo);
+    }
+  });
+
+  // Organize a lista de atributos
+  var atributosOrganizados = atributosPadrao.concat(atributosNaoPadrao);
+
+  // Atualize a visualização na página
+  var atributosFormatados = atributosOrganizados.map(atributo => {
+    var [nome, tipo] = atributo.split(':').map(item => item.trim());
+    var tipoPermitido = ['string', 'number', 'boolean'].includes(tipo);
+    var corDestaque = tipoPermitido ? 'black' : 'red';
+
+    return `<span style="color: ${corDestaque};">${atributo};</span>`;
+  });
+
+  document.getElementById('atributosExtratos').innerHTML = atributosFormatados.join('\n');
+}
+
   </script>
 
 </body>
